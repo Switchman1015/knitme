@@ -1,14 +1,14 @@
-const CACHE_NAME = "knitme-shell-v2";
+const CACHE_NAME = "knitme-shell-v4";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=2",
-  "./app.js?v=2",
-  "./manifest.webmanifest?v=2",
-  "./icons/icon.svg?v=2",
-  "./icons/icon-192.png?v=2",
-  "./icons/icon-512.png?v=2",
-  "./icons/apple-touch-icon.png?v=2",
+  "./styles.css?v=4",
+  "./app.js?v=4",
+  "./manifest.webmanifest?v=4",
+  "./icons/icon.svg?v=4",
+  "./icons/icon-192.png?v=4",
+  "./icons/icon-512.png?v=4",
+  "./icons/apple-touch-icon.png?v=4",
 ];
 
 self.addEventListener("install", (event) => {
