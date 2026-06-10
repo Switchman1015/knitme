@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#f2ede3" />
+    <meta name="theme-color" content="#b8b4ad" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta
@@ -14,12 +14,12 @@
       content="KnitMe は、ドット編み図を迷わず作って迷わず見るためのシンプルな PWA です。"
     />
     <title>KnitMe</title>
-    <link rel="manifest" href="./manifest.webmanifest?v=4" />
-    <link rel="icon" href="./icons/icon.svg?v=4" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=4" />
-    <link rel="stylesheet" href="./styles.css?v=4" />
+    <link rel="manifest" href="./manifest.webmanifest?v=5" />
+    <link rel="icon" href="./icons/icon.svg?v=5" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=5" />
+    <link rel="stylesheet" href="./styles.css?v=5" />
   </head>
-  <body data-mode="draw" data-settings-open="false">
+  <body data-mode="draw" data-settings-open="false" data-dialog="none">
     <div class="app-shell">
       <section class="artboard-shell">
         <div id="artboardViewport" class="artboard-viewport">
@@ -28,6 +28,10 @@
           </div>
         </div>
       </section>
+
+      <aside class="mini-map panel" aria-label="アートボード全体図">
+        <canvas id="miniMapCanvas" class="mini-map__canvas" width="184" height="144"></canvas>
+      </aside>
 
       <nav class="menu-bar panel" aria-label="アートボードメニュー">
         <button
@@ -59,13 +63,7 @@
         aria-labelledby="settingsTitle"
       >
         <div class="settings-panel__header">
-          <div>
-            <p class="eyebrow">Artboard Settings</p>
-            <h1 id="settingsTitle" class="settings-title">アートボード詳細設定</h1>
-            <p class="settings-copy">
-              iPad 横画面で編みやすいように、サイズと表示をここで調整します。
-            </p>
-          </div>
+          <h1 id="settingsTitle" class="settings-title">詳細設定</h1>
           <button
             id="settingsCloseButton"
             class="close-button"
@@ -79,34 +77,7 @@
         <div class="settings-panel__body">
           <section class="control-block control-block--first">
             <div class="block-header">
-              <div>
-                <h2>現在の状態</h2>
-                <p>いま見ている位置とモードを確認できます。</p>
-              </div>
-            </div>
-
-            <div class="info-grid">
-              <div class="info-card">
-                <span class="info-card__label">モード</span>
-                <strong id="modeStatus">描画</strong>
-              </div>
-              <div class="info-card">
-                <span class="info-card__label">現在位置</span>
-                <strong id="cellStatus">1行 1列</strong>
-              </div>
-              <div class="info-card">
-                <span class="info-card__label">アートボード</span>
-                <strong id="artboardStatus">24列 × 24行</strong>
-              </div>
-            </div>
-          </section>
-
-          <section class="control-block">
-            <div class="block-header">
-              <div>
-                <h2>アートボードサイズ</h2>
-                <p>縦横のドット数とドットの大きさを整数バーで調整できます。</p>
-              </div>
+              <h2>サイズ</h2>
             </div>
 
             <div class="slider-grid">
@@ -142,53 +113,80 @@
                 <input id="cellHeightInput" type="range" min="12" max="60" step="1" />
               </label>
             </div>
-
-            <div class="stats-row">
-              <div class="stat-chip">
-                <span class="stat-chip__label">縦横比</span>
-                <strong id="ratioValue">1.00 : 1</strong>
-              </div>
-              <div class="stat-chip">
-                <span class="stat-chip__label">自動保存</span>
-                <strong>この端末</strong>
-              </div>
-            </div>
           </section>
 
           <section class="control-block">
             <div class="block-header">
-              <div>
-                <h2>表示倍率</h2>
-                <p>ピンチ操作と同じく、アートボードだけを拡大縮小します。</p>
-              </div>
-              <strong id="zoomValue" class="numeric-pill">100%</strong>
+              <h2>色</h2>
             </div>
 
-            <label class="slider-field">
-              <div class="slider-field__top">
-                <span>ズーム</span>
-                <strong id="zoomRangeValue">100%</strong>
-              </div>
-              <input id="zoomInput" type="range" min="50" max="250" step="10" />
-            </label>
-          </section>
+            <div class="color-grid">
+              <label class="color-field">
+                <span>白ドット</span>
+                <input id="lightColorInput" type="color" value="#fffdfa" />
+              </label>
 
-          <section class="control-block">
-            <div class="block-header">
-              <div>
-                <h2>ジェスチャー</h2>
-                <p>アートボード上だけで操作が完結します。</p>
-              </div>
+              <label class="color-field">
+                <span>黒ドット</span>
+                <input id="darkColorInput" type="color" value="#2d2925" />
+              </label>
             </div>
-
-            <p class="viewer-note">
-              2本指ピンチでズーム、2本指スワイプで移動します。アートボードは常に最低1割が画面内に残るよう制御しています。
-            </p>
           </section>
         </div>
       </aside>
+
+      <div id="modalBackdrop" class="modal-backdrop" aria-hidden="true"></div>
+
+      <section
+        id="exportModal"
+        class="dialog-card panel"
+        role="dialog"
+        aria-modal="true"
+        aria-hidden="true"
+        aria-labelledby="exportDialogTitle"
+      >
+        <div class="dialog-card__header">
+          <h2 id="exportDialogTitle">PNG出力</h2>
+          <button class="close-button" type="button" data-close-dialog="true">閉じる</button>
+        </div>
+        <div class="dialog-card__body">
+          <div class="preview-frame">
+            <img id="exportPreviewImage" class="preview-image" alt="PNGプレビュー" />
+          </div>
+        </div>
+        <div class="dialog-card__actions">
+          <button id="downloadExportButton" class="menu-button menu-button--primary" type="button">
+            保存
+          </button>
+        </div>
+      </section>
+
+      <section
+        id="resetModal"
+        class="dialog-card dialog-card--compact panel"
+        role="dialog"
+        aria-modal="true"
+        aria-hidden="true"
+        aria-labelledby="resetDialogTitle"
+      >
+        <div class="dialog-card__header">
+          <h2 id="resetDialogTitle">アートボードリセット</h2>
+          <button class="close-button" type="button" data-close-dialog="true">閉じる</button>
+        </div>
+        <div class="dialog-card__body">
+          <p class="dialog-copy">アートボードをすべて白に戻しますか。</p>
+        </div>
+        <div class="dialog-card__actions">
+          <button class="menu-button menu-button--subtle" type="button" data-close-dialog="true">
+            キャンセル
+          </button>
+          <button id="confirmResetButton" class="menu-button menu-button--warn" type="button">
+            リセット
+          </button>
+        </div>
+      </section>
     </div>
 
-    <script type="module" src="./app.js?v=4"></script>
+    <script type="module" src="./app.js?v=5"></script>
   </body>
 </html>

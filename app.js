@@ -1,5 +1,5 @@
 const STORAGE_KEY = "knitme-state-v2";
-const SERVICE_WORKER_URL = "./sw.js?v=4";
+const SERVICE_WORKER_URL = "./sw.js?v=5";
 const CACHE_SAFE_MAX = 120;
 const HEADER_WIDTH = 52;
 const HEADER_HEIGHT = 40;
@@ -13,6 +13,8 @@ const DEFAULTS = {
   mode: "draw",
   currentRow: 1,
   currentCol: 1,
+  lightColor: "#fffdfa",
+  darkColor: "#2d2925",
 };
 
 const limits = {
@@ -29,17 +31,12 @@ const elements = {
   colsInput: document.getElementById("colsInput"),
   cellWidthInput: document.getElementById("cellWidthInput"),
   cellHeightInput: document.getElementById("cellHeightInput"),
+  lightColorInput: document.getElementById("lightColorInput"),
+  darkColorInput: document.getElementById("darkColorInput"),
   rowsValue: document.getElementById("rowsValue"),
   colsValue: document.getElementById("colsValue"),
   cellWidthValue: document.getElementById("cellWidthValue"),
   cellHeightValue: document.getElementById("cellHeightValue"),
-  ratioValue: document.getElementById("ratioValue"),
-  zoomInput: document.getElementById("zoomInput"),
-  zoomValue: document.getElementById("zoomValue"),
-  zoomRangeValue: document.getElementById("zoomRangeValue"),
-  cellStatus: document.getElementById("cellStatus"),
-  artboardStatus: document.getElementById("artboardStatus"),
-  modeStatus: document.getElementById("modeStatus"),
   modeToggleButton: document.getElementById("modeToggleButton"),
   exportButton: document.getElementById("exportButton"),
   resetButton: document.getElementById("resetButton"),
@@ -47,6 +44,14 @@ const elements = {
   settingsCloseButton: document.getElementById("settingsCloseButton"),
   settingsBackdrop: document.getElementById("settingsBackdrop"),
   settingsPanel: document.getElementById("settingsPanel"),
+  modalBackdrop: document.getElementById("modalBackdrop"),
+  exportModal: document.getElementById("exportModal"),
+  resetModal: document.getElementById("resetModal"),
+  closeDialogButtons: document.querySelectorAll("[data-close-dialog]"),
+  confirmResetButton: document.getElementById("confirmResetButton"),
+  downloadExportButton: document.getElementById("downloadExportButton"),
+  exportPreviewImage: document.getElementById("exportPreviewImage"),
+  miniMapCanvas: document.getElementById("miniMapCanvas"),
   artboardViewport: document.getElementById("artboardViewport"),
   artboardCanvas: document.getElementById("artboardCanvas"),
   gridScroller: document.getElementById("gridScroller"),
@@ -59,6 +64,9 @@ let isPainting = false;
 let paintValue = 0;
 let persistTimer = 0;
 let settingsOpen = false;
+let activeDialog = null;
+let exportDataUrl = "";
+let exportFilename = "";
 let gesture = null;
 let view = {
   x: 0,
@@ -72,6 +80,7 @@ setup();
 
 function setup() {
   bindControls();
+  syncPalette();
   buildArtboard();
   updateFormValues();
   render();
@@ -83,11 +92,12 @@ function bindControls() {
   elements.colsInput.addEventListener("input", applyArtboardSize);
   elements.cellWidthInput.addEventListener("input", applyCellMetrics);
   elements.cellHeightInput.addEventListener("input", applyCellMetrics);
-  elements.zoomInput.addEventListener("input", handleZoomSlider);
+  elements.lightColorInput.addEventListener("input", applyPalette);
+  elements.darkColorInput.addEventListener("input", applyPalette);
 
   elements.modeToggleButton.addEventListener("click", toggleMode);
-  elements.exportButton.addEventListener("click", exportArtboardPng);
-  elements.resetButton.addEventListener("click", resetArtboard);
+  elements.exportButton.addEventListener("click", openExportDialog);
+  elements.resetButton.addEventListener("click", openResetDialog);
   elements.settingsToggleButton.addEventListener("click", () => {
     setSettingsOpen(!settingsOpen);
   });
@@ -97,6 +107,12 @@ function bindControls() {
   elements.settingsBackdrop.addEventListener("click", () => {
     setSettingsOpen(false);
   });
+  elements.modalBackdrop.addEventListener("click", closeActiveDialog);
+  elements.closeDialogButtons.forEach((button) => {
+    button.addEventListener("click", closeActiveDialog);
+  });
+  elements.confirmResetButton.addEventListener("click", confirmResetArtboard);
+  elements.downloadExportButton.addEventListener("click", downloadPreparedExport);
 
   elements.gridScroller.addEventListener("pointerdown", handlePointerDown);
   elements.gridScroller.addEventListener("pointermove", handlePointerMove);
@@ -121,6 +137,7 @@ function bindControls() {
   document.addEventListener("gestureend", preventBrowserGesture);
   window.addEventListener("resize", () => {
     measureArtboard();
+    updateMiniMap();
   });
 }
 
@@ -159,9 +176,11 @@ function applyCellMetrics() {
   queuePersist();
 }
 
-function handleZoomSlider() {
-  const nextZoom = clampInteger(elements.zoomInput.value, limits.zoom, state.zoom);
-  setZoom(nextZoom);
+function applyPalette() {
+  state.lightColor = normalizeHexColor(elements.lightColorInput.value, state.lightColor);
+  state.darkColor = normalizeHexColor(elements.darkColorInput.value, state.darkColor);
+  syncPalette();
+  updateMiniMap();
   queuePersist();
 }
 
@@ -229,6 +248,8 @@ function render() {
   refreshCells();
   refreshViewerMode();
   updateFormValues();
+  updateStatus();
+  updateMiniMap();
 }
 
 function refreshCells() {
@@ -243,8 +264,6 @@ function refreshCells() {
       );
     }
   }
-
-  updateStatus();
 }
 
 function refreshViewerMode() {
@@ -268,21 +287,20 @@ function refreshViewerMode() {
       cell.classList.toggle("show-column-number", isRowActive);
     }
   }
-
-  updateStatus();
 }
 
 function updateStatus() {
   elements.body.dataset.mode = state.mode;
   elements.body.dataset.settingsOpen = String(settingsOpen);
-  elements.cellStatus.textContent = formatPosition(state.currentRow, state.currentCol);
-  elements.artboardStatus.textContent = `${state.cols}列 × ${state.rows}行`;
-  elements.modeStatus.textContent = state.mode === "draw" ? "描画" : "ビュー";
+  elements.body.dataset.dialog = activeDialog ?? "none";
   elements.modeToggleButton.textContent =
     state.mode === "draw" ? "ビューモード" : "描画モード";
   elements.settingsToggleButton.setAttribute("aria-expanded", String(settingsOpen));
   elements.settingsPanel.setAttribute("aria-hidden", String(!settingsOpen));
   elements.settingsBackdrop.setAttribute("aria-hidden", String(!settingsOpen));
+  elements.modalBackdrop.setAttribute("aria-hidden", String(!activeDialog));
+  elements.exportModal.setAttribute("aria-hidden", String(activeDialog !== "export"));
+  elements.resetModal.setAttribute("aria-hidden", String(activeDialog !== "reset"));
 }
 
 function updateFormValues() {
@@ -290,21 +308,36 @@ function updateFormValues() {
   elements.colsInput.value = String(state.cols);
   elements.cellWidthInput.value = String(state.cellWidth);
   elements.cellHeightInput.value = String(state.cellHeight);
-  elements.zoomInput.value = String(state.zoom);
+  elements.lightColorInput.value = state.lightColor;
+  elements.darkColorInput.value = state.darkColor;
 
   elements.rowsValue.textContent = String(state.rows);
   elements.colsValue.textContent = String(state.cols);
   elements.cellWidthValue.textContent = String(state.cellWidth);
   elements.cellHeightValue.textContent = String(state.cellHeight);
-  elements.zoomValue.textContent = `${state.zoom}%`;
-  elements.zoomRangeValue.textContent = `${state.zoom}%`;
-  elements.ratioValue.textContent = formatRatio(state.cellWidth / state.cellHeight);
 }
 
 function syncCellMetrics(recenter = false) {
   document.documentElement.style.setProperty("--cell-width", `${state.cellWidth}px`);
   document.documentElement.style.setProperty("--cell-height", `${state.cellHeight}px`);
   measureArtboard(recenter);
+}
+
+function syncPalette() {
+  const light = normalizeHexColor(state.lightColor, DEFAULTS.lightColor);
+  const dark = normalizeHexColor(state.darkColor, DEFAULTS.darkColor);
+  state.lightColor = light;
+  state.darkColor = dark;
+  document.documentElement.style.setProperty("--cell-light", light);
+  document.documentElement.style.setProperty("--cell-dark", dark);
+  document.documentElement.style.setProperty(
+    "--cell-light-contrast",
+    getContrastTextColor(light),
+  );
+  document.documentElement.style.setProperty(
+    "--cell-dark-contrast",
+    getContrastTextColor(dark),
+  );
 }
 
 function measureArtboard(recenter = false) {
@@ -334,34 +367,6 @@ function centerArtboard() {
   renderArtboardTransform();
 }
 
-function setZoom(nextZoom, anchorX = null, anchorY = null) {
-  const clampedZoom = clamp(nextZoom, limits.zoom.min, limits.zoom.max);
-  const currentScale = state.zoom / 100;
-  const targetScale = clampedZoom / 100;
-  const viewport = getViewportSize();
-  const pivotX = anchorX ?? viewport.width / 2;
-  const pivotY = anchorY ?? viewport.height / 2;
-
-  if (!view.width || !view.height) {
-    state.zoom = clampedZoom;
-    renderArtboardTransform();
-    updateFormValues();
-    updateStatus();
-    return;
-  }
-
-  const contentX = (pivotX - view.x) / currentScale;
-  const contentY = (pivotY - view.y) / currentScale;
-
-  state.zoom = clampedZoom;
-  view.x = pivotX - contentX * targetScale;
-  view.y = pivotY - contentY * targetScale;
-  clampArtboardPosition();
-  renderArtboardTransform();
-  updateFormValues();
-  updateStatus();
-}
-
 function clampArtboardPosition() {
   const viewport = getViewportSize();
   const scale = state.zoom / 100;
@@ -388,7 +393,87 @@ function clampArtboardPosition() {
 }
 
 function renderArtboardTransform() {
-  elements.artboardCanvas.style.transform = `translate(${view.x}px, ${view.y}px) scale(${state.zoom / 100})`;
+  elements.artboardCanvas.style.transform =
+    `translate(${view.x}px, ${view.y}px) scale(${state.zoom / 100})`;
+  updateMiniMap();
+}
+
+function updateMiniMap() {
+  const canvas = elements.miniMapCanvas;
+  if (!canvas) {
+    return;
+  }
+
+  const ctx = canvas.getContext("2d");
+  const displayWidth = canvas.clientWidth || 184;
+  const displayHeight = canvas.clientHeight || 144;
+  const dpr = window.devicePixelRatio || 1;
+  const physicalWidth = Math.round(displayWidth * dpr);
+  const physicalHeight = Math.round(displayHeight * dpr);
+
+  if (canvas.width !== physicalWidth || canvas.height !== physicalHeight) {
+    canvas.width = physicalWidth;
+    canvas.height = physicalHeight;
+  }
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, displayWidth, displayHeight);
+
+  const fullWidth = view.width || elements.artboardCanvas.offsetWidth || 1;
+  const fullHeight = view.height || elements.artboardCanvas.offsetHeight || 1;
+  const padding = 8;
+  const previewScale = Math.min(
+    (displayWidth - padding * 2) / fullWidth,
+    (displayHeight - padding * 2) / fullHeight,
+  );
+  const offsetX = (displayWidth - fullWidth * previewScale) / 2;
+  const offsetY = (displayHeight - fullHeight * previewScale) / 2;
+
+  ctx.fillStyle = "#f6f2ea";
+  ctx.fillRect(offsetX, offsetY, fullWidth * previewScale, fullHeight * previewScale);
+  ctx.strokeStyle = "#bdb4a5";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(offsetX, offsetY, fullWidth * previewScale, fullHeight * previewScale);
+
+  ctx.fillStyle = "#ece5d7";
+  ctx.fillRect(offsetX, offsetY, fullWidth * previewScale, HEADER_HEIGHT * previewScale);
+  ctx.fillRect(offsetX, offsetY, HEADER_WIDTH * previewScale, fullHeight * previewScale);
+
+  for (let row = 0; row < state.rows; row += 1) {
+    for (let col = 0; col < state.cols; col += 1) {
+      if (state.cells[row][col] !== 1) {
+        continue;
+      }
+
+      const x = offsetX + (HEADER_WIDTH + col * state.cellWidth) * previewScale;
+      const y = offsetY + (HEADER_HEIGHT + row * state.cellHeight) * previewScale;
+      ctx.fillStyle = state.darkColor;
+      ctx.fillRect(x, y, state.cellWidth * previewScale, state.cellHeight * previewScale);
+    }
+  }
+
+  const viewport = getViewportSize();
+  const zoomScale = state.zoom / 100;
+  const visibleLeft = clamp((-view.x) / zoomScale, 0, fullWidth);
+  const visibleTop = clamp((-view.y) / zoomScale, 0, fullHeight);
+  const visibleRight = clamp((viewport.width - view.x) / zoomScale, 0, fullWidth);
+  const visibleBottom = clamp((viewport.height - view.y) / zoomScale, 0, fullHeight);
+
+  ctx.fillStyle = "rgba(54, 95, 86, 0.18)";
+  ctx.strokeStyle = "rgba(38, 69, 62, 0.94)";
+  ctx.lineWidth = 1.5;
+  ctx.fillRect(
+    offsetX + visibleLeft * previewScale,
+    offsetY + visibleTop * previewScale,
+    Math.max(visibleRight - visibleLeft, 0) * previewScale,
+    Math.max(visibleBottom - visibleTop, 0) * previewScale,
+  );
+  ctx.strokeRect(
+    offsetX + visibleLeft * previewScale,
+    offsetY + visibleTop * previewScale,
+    Math.max(visibleRight - visibleLeft, 0) * previewScale,
+    Math.max(visibleBottom - visibleTop, 0) * previewScale,
+  );
 }
 
 function getViewportSize() {
@@ -400,17 +485,66 @@ function getViewportSize() {
 
 function toggleMode() {
   state.mode = state.mode === "draw" ? "viewer" : "draw";
-  updateFormValues();
   refreshViewerMode();
+  updateStatus();
   queuePersist();
 }
 
 function setSettingsOpen(nextOpen) {
+  if (activeDialog) {
+    return;
+  }
+
   settingsOpen = nextOpen;
   updateStatus();
 }
 
+function openExportDialog() {
+  exportDataUrl = generateExportDataUrl();
+  exportFilename = `knitme-artboard-${formatTimestamp()}.png`;
+  elements.exportPreviewImage.src = exportDataUrl;
+  settingsOpen = false;
+  activeDialog = "export";
+  updateStatus();
+}
+
+function downloadPreparedExport() {
+  if (!exportDataUrl) {
+    return;
+  }
+
+  const link = document.createElement("a");
+  link.download = exportFilename;
+  link.href = exportDataUrl;
+  link.click();
+}
+
+function openResetDialog() {
+  settingsOpen = false;
+  activeDialog = "reset";
+  updateStatus();
+}
+
+function closeActiveDialog() {
+  activeDialog = null;
+  updateStatus();
+}
+
+function confirmResetArtboard() {
+  state.cells = createGrid(state.rows, state.cols);
+  closeActiveDialog();
+  refreshCells();
+  refreshViewerMode();
+  updateMiniMap();
+  queuePersist();
+}
+
 function handleKeydown(event) {
+  if (event.key === "Escape" && activeDialog) {
+    closeActiveDialog();
+    return;
+  }
+
   if (event.key === "Escape" && settingsOpen) {
     setSettingsOpen(false);
   }
@@ -421,7 +555,7 @@ function preventBrowserGesture(event) {
 }
 
 function handlePointerDown(event) {
-  if (event.pointerType === "touch") {
+  if (event.pointerType === "touch" || activeDialog || settingsOpen) {
     return;
   }
 
@@ -434,7 +568,13 @@ function handlePointerDown(event) {
 }
 
 function handlePointerMove(event) {
-  if (event.pointerType === "touch" || !isPainting || state.mode !== "draw") {
+  if (
+    event.pointerType === "touch" ||
+    !isPainting ||
+    state.mode !== "draw" ||
+    activeDialog ||
+    settingsOpen
+  ) {
     return;
   }
 
@@ -447,6 +587,10 @@ function handlePointerMove(event) {
 }
 
 function handleTouchStart(event) {
+  if (activeDialog || settingsOpen) {
+    return;
+  }
+
   if (event.touches.length === 2) {
     isPainting = false;
     startGesture(event);
@@ -532,8 +676,7 @@ function updateGesture(event) {
   view.y = midpoint.y - gesture.contentY * nextScale;
   clampArtboardPosition();
   renderArtboardTransform();
-  updateFormValues();
-  updateStatus();
+  queuePersist();
 }
 
 function getTouchMidpoint(touches) {
@@ -557,8 +700,8 @@ function applyCellInteraction(cell, allowPaint) {
   state.currentCol = col;
 
   if (state.mode === "viewer") {
-    updateFormValues();
     refreshViewerMode();
+    updateMiniMap();
     queuePersist();
     return;
   }
@@ -594,8 +737,7 @@ function paintCell(row, col, value) {
     "aria-label",
     `${formatPosition(row, col)} ${value === 1 ? "黒" : "白"}`,
   );
-  updateFormValues();
-  updateStatus();
+  updateMiniMap();
 }
 
 function findCellTarget(clientX, clientY) {
@@ -603,18 +745,7 @@ function findCellTarget(clientX, clientY) {
   return target?.closest?.(".cell") ?? null;
 }
 
-function resetArtboard() {
-  if (!window.confirm("アートボードをすべて白に戻します。よろしいですか？")) {
-    return;
-  }
-
-  state.cells = createGrid(state.rows, state.cols);
-  refreshCells();
-  refreshViewerMode();
-  queuePersist();
-}
-
-function exportArtboardPng() {
+function generateExportDataUrl() {
   const width = HEADER_WIDTH + state.cols * state.cellWidth;
   const height = HEADER_HEIGHT + state.rows * state.cellHeight;
   const scale = 2;
@@ -625,16 +756,12 @@ function exportArtboardPng() {
   canvas.height = height * scale;
   ctx.scale(scale, scale);
 
-  ctx.fillStyle = "#fffdf8";
+  ctx.fillStyle = state.lightColor;
   ctx.fillRect(0, 0, width, height);
 
   drawHeaderRow(ctx);
   drawCells(ctx);
-
-  const link = document.createElement("a");
-  link.download = `knitme-artboard-${formatTimestamp()}.png`;
-  link.href = canvas.toDataURL("image/png");
-  link.click();
+  return canvas.toDataURL("image/png");
 }
 
 function drawHeaderRow(ctx) {
@@ -679,7 +806,12 @@ function drawCells(ctx) {
   ctx.lineWidth = 1;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = `700 ${Math.max(11, Math.floor(Math.min(state.cellWidth, state.cellHeight) * 0.36))}px "Avenir Next", "Hiragino Sans", sans-serif`;
+  ctx.font =
+    `700 ${Math.max(11, Math.floor(Math.min(state.cellWidth, state.cellHeight) * 0.36))}px ` +
+    '"Avenir Next", "Hiragino Sans", sans-serif';
+
+  const lightText = getContrastTextColor(state.lightColor);
+  const darkText = getContrastTextColor(state.darkColor);
 
   for (let row = 1; row <= state.rows; row += 1) {
     for (let col = 1; col <= state.cols; col += 1) {
@@ -689,13 +821,13 @@ function drawCells(ctx) {
       const isActiveRow = state.mode !== "viewer" || state.currentRow === row;
 
       ctx.globalAlpha = state.mode === "viewer" && !isActiveRow ? 0.14 : 1;
-      ctx.fillStyle = filled ? "#2d2925" : "#fffdfa";
+      ctx.fillStyle = filled ? state.darkColor : state.lightColor;
       ctx.fillRect(x, y, state.cellWidth, state.cellHeight);
       ctx.strokeRect(x, y, state.cellWidth, state.cellHeight);
 
       if (state.mode === "viewer" && isActiveRow) {
         ctx.globalAlpha = 1;
-        ctx.fillStyle = filled ? "#f7f3ec" : "#294840";
+        ctx.fillStyle = filled ? darkText : lightText;
         ctx.fillText(String(col), x + state.cellWidth / 2, y + state.cellHeight / 2);
       }
     }
@@ -751,6 +883,8 @@ function loadState() {
       mode: parsed.mode === "viewer" ? "viewer" : "draw",
       currentRow: 1,
       currentCol: 1,
+      lightColor: normalizeHexColor(parsed.lightColor, DEFAULTS.lightColor),
+      darkColor: normalizeHexColor(parsed.darkColor, DEFAULTS.darkColor),
       cells: createGrid(rows, cols),
     };
 
@@ -819,8 +953,32 @@ function normalizeZoom(rawZoom) {
   return clamp(Math.round(parsed), limits.zoom.min, limits.zoom.max);
 }
 
-function formatRatio(value) {
-  return `${value.toFixed(2)} : 1`;
+function normalizeHexColor(value, fallback) {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  const trimmed = value.trim();
+  if (/^#[0-9a-f]{6}$/i.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
+  return fallback;
+}
+
+function getContrastTextColor(hexColor) {
+  const { r, g, b } = hexToRgb(hexColor);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.62 ? "#2a241d" : "#f7f3ec";
+}
+
+function hexToRgb(hexColor) {
+  const normalized = normalizeHexColor(hexColor, "#000000");
+  return {
+    r: Number.parseInt(normalized.slice(1, 3), 16),
+    g: Number.parseInt(normalized.slice(3, 5), 16),
+    b: Number.parseInt(normalized.slice(5, 7), 16),
+  };
 }
 
 function formatPosition(row, col) {
