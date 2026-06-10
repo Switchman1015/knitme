@@ -1,0 +1,52 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 512 512"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">KnitMe</title>
+  <desc id="desc">A weaving-inspired grid icon for the KnitMe app.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f6f1e5" />
+      <stop offset="100%" stop-color="#ded2bc" />
+    </linearGradient>
+    <linearGradient id="thread" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4c776d" />
+      <stop offset="100%" stop-color="#294840" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="124" fill="url(#bg)" />
+  <rect
+    x="82"
+    y="82"
+    width="348"
+    height="348"
+    rx="44"
+    fill="#fffaf2"
+    stroke="#d3c6b0"
+    stroke-width="8"
+  />
+  <g fill="#312819">
+    <rect x="116" y="116" width="54" height="54" rx="14" />
+    <rect x="226" y="116" width="54" height="54" rx="14" />
+    <rect x="336" y="116" width="54" height="54" rx="14" />
+    <rect x="171" y="171" width="54" height="54" rx="14" />
+    <rect x="281" y="171" width="54" height="54" rx="14" />
+    <rect x="116" y="226" width="54" height="54" rx="14" />
+    <rect x="226" y="226" width="54" height="54" rx="14" />
+    <rect x="336" y="226" width="54" height="54" rx="14" />
+    <rect x="171" y="281" width="54" height="54" rx="14" />
+    <rect x="281" y="281" width="54" height="54" rx="14" />
+    <rect x="116" y="336" width="54" height="54" rx="14" />
+    <rect x="226" y="336" width="54" height="54" rx="14" />
+    <rect x="336" y="336" width="54" height="54" rx="14" />
+  </g>
+  <path
+    d="M90 171h332M90 281h332M171 90v332M281 90v332"
+    stroke="url(#thread)"
+    stroke-linecap="round"
+    stroke-width="16"
+    opacity="0.72"
+  />
+</svg>

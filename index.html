@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#f2ede3" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta
+      name="description"
+      content="KnitMe は、ドット編み図を迷わず作って迷わず見るためのシンプルな PWA です。"
+    />
+    <title>KnitMe</title>
+    <link rel="manifest" href="./manifest.webmanifest?v=2" />
+    <link rel="icon" href="./icons/icon.svg?v=2" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=2" />
+    <link rel="stylesheet" href="./styles.css?v=2" />
+  </head>
+  <body data-mode="draw" data-settings-open="false">
+    <div class="app-shell">
+      <section class="grid-shell">
+        <div id="gridScroller" class="grid-scroller" aria-live="polite"></div>
+      </section>
+
+      <button
+        id="settingsToggleButton"
+        class="settings-toggle"
+        type="button"
+        aria-controls="settingsPanel"
+        aria-expanded="false"
+      >
+        設定
+      </button>
+
+      <div id="settingsBackdrop" class="settings-backdrop" aria-hidden="true"></div>
+
+      <aside
+        id="settingsPanel"
+        class="settings-panel panel"
+        role="dialog"
+        aria-modal="true"
+        aria-hidden="true"
+        aria-labelledby="settingsTitle"
+      >
+        <div class="settings-panel__header">
+          <div>
+            <p class="eyebrow">Settings</p>
+            <h1 id="settingsTitle" class="settings-title">編み図設定</h1>
+            <p class="settings-copy">
+              サイズ調整、ズーム、ビュワー操作をここにまとめています。
+            </p>
+          </div>
+          <button
+            id="settingsCloseButton"
+            class="close-button"
+            type="button"
+            aria-label="設定を閉じる"
+          >
+            閉じる
+          </button>
+        </div>
+
+        <div class="settings-panel__body">
+          <section class="control-block control-block--first">
+            <div class="block-header">
+              <div>
+                <h2>表示</h2>
+                <p>モード変更と現在の編み図状態を確認できます。</p>
+              </div>
+            </div>
+
+            <div class="segment" role="tablist" aria-label="モード切り替え">
+              <button class="segment__button is-active" data-mode-button="draw">
+                描画
+              </button>
+              <button class="segment__button" data-mode-button="viewer">
+                ビュー
+              </button>
+            </div>
+
+            <div class="stats-row">
+              <div class="stat-chip">
+                <span class="stat-chip__label">現在位置</span>
+                <strong id="cellStatus">A1</strong>
+              </div>
+              <div class="stat-chip">
+                <span class="stat-chip__label">グリッド</span>
+                <strong id="gridStatus">24列 × 24行</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="control-block">
+            <div class="block-header">
+              <div>
+                <h2>編み図設定</h2>
+                <p>制作途中でもサイズと見た目を調整できます。</p>
+              </div>
+              <button id="clearButton" class="ghost-button" type="button">
+                全消去
+              </button>
+            </div>
+
+            <div class="field-grid">
+              <label class="field">
+                <span>横のドット数</span>
+                <input id="colsInput" type="number" min="1" max="120" step="1" />
+              </label>
+              <label class="field">
+                <span>縦のドット数</span>
+                <input id="rowsInput" type="number" min="1" max="120" step="1" />
+              </label>
+              <label class="field">
+                <span>ドット横幅</span>
+                <input
+                  id="cellWidthInput"
+                  type="number"
+                  min="12"
+                  max="60"
+                  step="1"
+                />
+              </label>
+              <label class="field">
+                <span>ドット縦幅</span>
+                <input
+                  id="cellHeightInput"
+                  type="number"
+                  min="12"
+                  max="60"
+                  step="1"
+                />
+              </label>
+            </div>
+
+            <div class="stats-row">
+              <div class="stat-chip">
+                <span class="stat-chip__label">縦横比</span>
+                <strong id="ratioValue">1.00</strong>
+              </div>
+              <div class="stat-chip">
+                <span class="stat-chip__label">自動保存</span>
+                <strong>この端末</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="control-block">
+            <div class="block-header">
+              <div>
+                <h2>表示倍率</h2>
+                <p>細部確認と全体確認をすぐ切り替えられます。</p>
+              </div>
+              <strong id="zoomValue" class="numeric-pill">100%</strong>
+            </div>
+            <label class="range-field" for="zoomInput">
+              <span>ズーム</span>
+              <input
+                id="zoomInput"
+                type="range"
+                min="0.5"
+                max="4"
+                step="0.1"
+              />
+            </label>
+          </section>
+
+          <section class="control-block">
+            <div class="block-header">
+              <div>
+                <h2>ビュワー</h2>
+                <p>今見る行・列だけを目立たせて追いやすくします。</p>
+              </div>
+            </div>
+
+            <div class="viewer-only">
+              <div class="field-stack">
+                <span class="field-stack__label">強調表示</span>
+                <div
+                  class="segment segment--compact"
+                  role="tablist"
+                  aria-label="強調表示切り替え"
+                >
+                  <button
+                    class="segment__button is-active"
+                    data-focus-button="cross"
+                    type="button"
+                  >
+                    行+列
+                  </button>
+                  <button
+                    class="segment__button"
+                    data-focus-button="row"
+                    type="button"
+                  >
+                    行だけ
+                  </button>
+                  <button
+                    class="segment__button"
+                    data-focus-button="column"
+                    type="button"
+                  >
+                    列だけ
+                  </button>
+                </div>
+              </div>
+
+              <div class="stepper-grid">
+                <div class="stepper">
+                  <span class="stepper__label">行</span>
+                  <div class="stepper__controls">
+                    <button
+                      class="icon-button"
+                      id="rowBackButton"
+                      type="button"
+                      aria-label="前の行"
+                    >
+                      −
+                    </button>
+                    <input
+                      id="currentRowInput"
+                      type="number"
+                      min="1"
+                      max="120"
+                      step="1"
+                    />
+                    <button
+                      class="icon-button"
+                      id="rowForwardButton"
+                      type="button"
+                      aria-label="次の行"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                <div class="stepper">
+                  <span class="stepper__label">列</span>
+                  <div class="stepper__controls">
+                    <button
+                      class="icon-button"
+                      id="colBackButton"
+                      type="button"
+                      aria-label="前の列"
+                    >
+                      −
+                    </button>
+                    <input
+                      id="currentColInput"
+                      type="number"
+                      min="1"
+                      max="120"
+                      step="1"
+                    />
+                    <button
+                      class="icon-button"
+                      id="colForwardButton"
+                      type="button"
+                      aria-label="次の列"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <p class="column-indicator">
+                    列記号 <strong id="columnLabel">A</strong>
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="draw-only">
+              <p class="mode-note">
+                セルをタップで白黒切り替え。ドラッグで連続入力できます。
+              </p>
+            </div>
+          </section>
+        </div>
+      </aside>
+    </div>
+
+    <script type="module" src="./app.js?v=2"></script>
+  </body>
+</html>
